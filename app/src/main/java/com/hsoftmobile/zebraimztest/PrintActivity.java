@@ -19,10 +19,13 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.Toast;
 
+import com.zebra.sdk.comm.BluetoothConnection;
 import com.zebra.sdk.comm.Connection;
+import com.zebra.sdk.comm.ConnectionException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Set;
 
@@ -76,6 +79,9 @@ public class PrintActivity extends AppCompatActivity {
 		btnPrintText.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View view) {
+				if (!canPrint()) {
+					return;
+				}
 				String message = textMessage.getText().toString().trim();
 				if (!message.isEmpty()) {
 					sendTextOverBluetooth(message);
@@ -92,6 +98,9 @@ public class PrintActivity extends AppCompatActivity {
 		btnPrintPhoto.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View view) {
+				if (!canPrint()) {
+					return;
+				}
 				if (!photoLoaded) {
 					showToast("You need to load a picture first");
 				} else {
@@ -102,8 +111,7 @@ public class PrintActivity extends AppCompatActivity {
 		btnPaired.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View view) {
-				if (!deviceHasBluetooth) {
-					showToast("Your device does not have Bluetooth!");
+				if (!canUseBluetooth()) {
 					return;
 				}
 				new PairedDevicesTask().execute();
@@ -159,6 +167,27 @@ public class PrintActivity extends AppCompatActivity {
 		return progressDialog;
 	}
 
+	private boolean canUseBluetooth() {
+		if (!deviceHasBluetooth) {
+			showToast("Device has no Bluetooth");
+			return false;
+		}
+		bluetoothIsEnabled = bluetoothAdapter.isEnabled();
+		if (!bluetoothIsEnabled) {
+			showToast("Please enable Bluetooth first");
+			return false;
+		}
+		return true;
+	}
+
+	private boolean canPrint() {
+		if (!printerFound) {
+			showToast("You need to select a printer first");
+			return false;
+		}
+		return true;
+	}
+
 	// iMZ Printer methods
 
 	private class PairedDevicesTask extends AsyncTask<Void, Void, String> {
@@ -181,10 +210,10 @@ public class PrintActivity extends AppCompatActivity {
 			Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
 			if (pairedDevices.size() > 0) {
 				for (BluetoothDevice device: pairedDevices) {
-					final String name = device.getName().trim();
+					//final int deviceClass = device.getBluetoothClass().getDeviceClass();
 					final int majorDeviceClass = device.getBluetoothClass().getMajorDeviceClass();
-					final int deviceClass = device.getBluetoothClass().getDeviceClass();
-					if (majorDeviceClass == BluetoothClass.Device.Major.IMAGING && deviceClass == BT_CLASS_PRINTER) {
+					// select only possible printers
+					if (majorDeviceClass == BluetoothClass.Device.Major.IMAGING) {
 						availablePrinters.add(device);
 					}
 				}
@@ -203,7 +232,6 @@ public class PrintActivity extends AppCompatActivity {
 				showToast(result);
 			} else {
 				if (availablePrinters.size() > 1) {
-					// TODO: show list of printers if more than one
 					showSelectPrinterDialog();
 				} else {
 					// set only printer found
@@ -217,19 +245,53 @@ public class PrintActivity extends AppCompatActivity {
 
 	private class PrintTextTask extends AsyncTask<String, Void, String> {
 
+		private ProgressDialog progressPrintText;
+
 		@Override
 		protected void onPreExecute() {
 			super.onPreExecute();
+
+			progressPrintText = createProgressDialog("Printing text", "Please wait...");
+			progressPrintText.show();
 		}
 
 		@Override
 		protected String doInBackground(String... strings) {
-			return "";
+			String errorMsg = "";
+			Connection thePrinterConn = new BluetoothConnection(selectedPrinter.getAddress());
+			try {
+				// Open the connection - physical connection is established here.
+				thePrinterConn.open();
+				String cpclString = "! 0 200 200 100 1\n" +
+						"TEXT 4 0 30 40 " + strings[0].trim() + "\n" +
+						"FORM\n" +
+						"PRINT\n";
+				// Send the data to printer as a byte array.
+				thePrinterConn.write(cpclString.getBytes(Charset.defaultCharset()));
+
+				// Make sure the data got to the printer before closing the connection
+				Thread.sleep(500);
+
+				// Close the connection to release resources.
+				thePrinterConn.close();
+			} catch (ConnectionException e) {
+				e.printStackTrace();
+				errorMsg = e.getLocalizedMessage();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+
+			return errorMsg;
 		}
 
 		@Override
 		protected void onPostExecute(String result) {
 			super.onPostExecute(result);
+
+			progressPrintText.dismiss();
+			if (!result.isEmpty()) {
+				showToast(result);
+			}
 		}
 	}
 
@@ -251,6 +313,8 @@ public class PrintActivity extends AppCompatActivity {
 	}
 
 	private void sendTextOverBluetooth(String message) {
-		showToast(message);
+		new PrintTextTask().execute(message);
 	}
+
+	// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 }
