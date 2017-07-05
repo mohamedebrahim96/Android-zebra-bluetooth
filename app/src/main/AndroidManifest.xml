@@ -2,7 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
 		  package="com.hsoftmobile.zebraimztest">
 
+	<!--Get photo from library-->
 	<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+
+	<!--Bluetooth stuff-->
+	<uses-permission android:name="android.permission.BLUETOOTH"/>
+	<uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
 
 	<application
 		android:allowBackup="true"
