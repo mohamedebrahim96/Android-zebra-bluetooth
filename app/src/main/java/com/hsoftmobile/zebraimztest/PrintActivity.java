@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothDevice;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -22,6 +23,10 @@ import android.widget.Toast;
 import com.zebra.sdk.comm.BluetoothConnection;
 import com.zebra.sdk.comm.Connection;
 import com.zebra.sdk.comm.ConnectionException;
+import com.zebra.sdk.graphics.ZebraImageFactory;
+import com.zebra.sdk.printer.PrinterLanguage;
+import com.zebra.sdk.printer.ZebraPrinter;
+import com.zebra.sdk.printer.ZebraPrinterFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -104,7 +109,8 @@ public class PrintActivity extends AppCompatActivity {
 				if (!photoLoaded) {
 					showToast("You need to load a picture first");
 				} else {
-					showToast("Printing coming soon!");
+					BitmapDrawable bitmapDrawable = (BitmapDrawable) imagePhoto.getDrawable();
+					sendBitmapOverBluetooth(bitmapDrawable.getBitmap());
 				}
 			}
 		});
@@ -243,6 +249,59 @@ public class PrintActivity extends AppCompatActivity {
 		}
 	}
 
+	private class PrintBitmapTask extends AsyncTask<Bitmap, Void, String> {
+
+		private ProgressDialog progressPrintBitmap;
+
+		@Override
+		protected void onPreExecute() {
+			super.onPreExecute();
+
+			progressPrintBitmap = createProgressDialog("Printing photo", "Please wait...");
+			progressPrintBitmap.show();
+		}
+
+		@Override
+		protected String doInBackground(Bitmap... bitmaps) {
+			if (bitmaps.length != 1) return "Wrong argument size";
+			String errorMsg = "";
+			Connection thePrinterConn = new BluetoothConnection(selectedPrinter.getAddress());
+			try {
+				thePrinterConn.open();
+				ZebraPrinter printer = ZebraPrinterFactory.getInstance(PrinterLanguage.CPCL, thePrinterConn);
+				float targetWidth = bitmaps[0].getWidth();
+				float targetHeight = bitmaps[0].getHeight();
+				final float maxWidth = 380f;
+				float scaleFactor;
+				if (targetWidth > maxWidth) {
+					scaleFactor = targetWidth / maxWidth;
+					targetWidth = maxWidth;
+					targetHeight = targetHeight / scaleFactor;
+				} else if (targetWidth < maxWidth) {
+					scaleFactor = maxWidth / targetWidth;
+					targetWidth = maxWidth;
+					targetHeight = targetHeight * scaleFactor;
+				}
+				printer.printImage(ZebraImageFactory.getImage(bitmaps[0]), 0, 10, (int) targetWidth, (int) targetHeight, false);
+				thePrinterConn.close();
+			} catch (ConnectionException | IOException e) {
+				e.printStackTrace();
+				errorMsg = e.getLocalizedMessage();
+			}
+			return errorMsg;
+		}
+
+		@Override
+		protected void onPostExecute(String s) {
+			super.onPostExecute(s);
+
+			progressPrintBitmap.dismiss();
+			if (!s.isEmpty()) {
+				showToast(s);
+			}
+		}
+	}
+
 	private class PrintTextTask extends AsyncTask<String, Void, String> {
 
 		private ProgressDialog progressPrintText;
@@ -314,6 +373,10 @@ public class PrintActivity extends AppCompatActivity {
 
 	private void sendTextOverBluetooth(String message) {
 		new PrintTextTask().execute(message);
+	}
+
+	private void sendBitmapOverBluetooth(Bitmap bitmap) {
+		new PrintBitmapTask().execute(bitmap);
 	}
 
 	// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
