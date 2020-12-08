@@ -67,6 +67,7 @@ public class PrintActivity extends AppCompatActivity {
 		printerAddress = "";
 
 		bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+		bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 		if (bluetoothAdapter != null) {
 			deviceHasBluetooth = true;
 			bluetoothIsEnabled = bluetoothAdapter.isEnabled();
